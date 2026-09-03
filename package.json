@@ -1,0 +1,24 @@
+{
+  "name": "imgen",
+  "version": "0.1.0",
+  "description": "Agent-friendly OpenAI image generation with persistent background jobs",
+  "type": "module",
+  "bin": {
+    "imgen": "dist/imgen.js"
+  },
+  "scripts": {
+    "build": "tsc && chmod +x dist/imgen.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^6.0.2"
+  },
+  "dependencies": {
+    "openai": "^7.8.0",
+    "sharp": "^0.35.4"
+  }
+}
