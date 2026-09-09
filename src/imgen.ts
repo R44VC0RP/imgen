@@ -16,7 +16,7 @@ import sharp from 'sharp';
 type ImageRequest = ImageGenerateParamsBase & {
   model: string;
   size: string;
-  quality: 'low' | 'medium' | 'high' | 'auto';
+  quality: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'auto';
   background: 'transparent' | 'opaque' | 'auto';
   output_format: 'png' | 'webp' | 'jpeg';
   n: number;
@@ -36,7 +36,7 @@ interface ResponseRequest {
   image_model: string;
   action: 'generate' | 'edit' | 'auto';
   size: string;
-  quality: 'low' | 'medium' | 'high' | 'auto';
+  quality: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'auto';
   background: 'transparent' | 'opaque' | 'auto';
   output_format: 'png' | 'webp' | 'jpeg';
   output_compression?: number;
@@ -133,9 +133,10 @@ Image options:
   -p, --prompt TEXT            Prompt (or use the positional prompt)
   --prompt-file FILE           Read prompt from a file; '-' reads stdin
   -o, --out FILE               Output path; never overwrites existing files
-  --model MODEL               Default: gpt-image-2
-  --size WIDTHxHEIGHT|auto     Default: 1024x1024; custom GPT Image 2 sizes
-  --quality low|medium|high|auto  Default: high
+  --model MODEL               Default: gpt-image-2.5-sunburst
+  --size WIDTHxHEIGHT|auto     Default: 1024x1024; custom GPT Image 2/2.5 sizes
+  --quality QUALITY           low|medium|high|xhigh|max|auto; default: high
+                              xhigh and max require GPT Image 2.5
   --background transparent|opaque|auto  Default: transparent (JPEG: auto)
   --output-format png|webp|jpeg  Default: inferred from --out, otherwise png
   --output-compression 0..100  JPEG/WebP only; API default when omitted
@@ -151,11 +152,11 @@ Image options:
 Edit-only options:
   --image FILE                Repeat for up to 16 PNG/JPEG/WebP references
   --mask FILE                 PNG alpha mask, same dimensions as first image
-  --input-fidelity low|high    Older GPT Image models only; omit for Image 2
+  --input-fidelity low|high    Older GPT Image models only; omit for Image 2/2.5
 
 Responses API options:
   --model MODEL                Reasoning model; default: gpt-5.6
-  --image-model MODEL          Image tool model; default: gpt-image-2
+  --image-model MODEL          Image tool model; default: gpt-image-2.5-sunburst
   --action auto|generate|edit  Default: auto
   --previous-response ID       Continue a prior Responses API image conversation
   Prompts may mention saved characters as @Handle; their reference images are attached.
@@ -182,7 +183,7 @@ Notes:
   Jobs run locally and survive terminal exit, but not a reboot or forced kill.
   No automatic request retries: avoids accidentally paying for duplicate images.
   --wait interruption does not cancel the background job.
-  GPT Image 2 sizes: edges divisible by 16, max edge 3840, max ratio 3:1,
+  GPT Image 2/2.5 sizes: edges divisible by 16, max edge 3840, max ratio 3:1,
   total pixels 655360..8294400. Above 3686400 pixels is experimental.
   Transparency is in preview. Prompts can override it; results check actual alpha.
   Output formats are PNG/JPEG/WebP, not SVG. GPT Image always returns base64.
@@ -467,14 +468,17 @@ async function submitResponse(values: Values, positionals: string[]) {
   const request: ResponseRequest = {
     prompt,
     model: values.model ?? 'gpt-5.6',
-    image_model: values['image-model'] ?? 'gpt-image-2',
+    image_model: values['image-model'] ?? 'gpt-image-2.5-sunburst',
     action: choice(values.action ?? 'auto', 'action', ['auto', 'generate', 'edit']),
     size: values.size ?? '1024x1024',
-    quality: choice(values.quality ?? 'high', 'quality', ['low', 'medium', 'high', 'auto']),
+    quality: choice(values.quality ?? 'high', 'quality', ['low', 'medium', 'high', 'xhigh', 'max', 'auto']),
     background,
     output_format: format,
     characters,
   };
+  if ((request.quality === 'xhigh' || request.quality === 'max') && !/^gpt-image-2\.5-(sunburst|flare)(-\d{4}-\d{2}-\d{2})?$/.test(request.image_model)) {
+    usage('--quality xhigh and max require a GPT Image 2.5 Sunburst or Flare model.');
+  }
   if (values['output-compression'] !== undefined) {
     if (format === 'png') usage('--output-compression is only supported for JPEG and WebP.');
     request.output_compression = integer(values['output-compression'], 'output-compression', 0, 100);
@@ -545,14 +549,17 @@ async function submit(kind: Job['kind'], values: Values, positionals: string[]) 
   const format = choice(values['output-format'] ?? inferredFormat ?? 'png', 'output-format', ['png', 'webp', 'jpeg']);
   if (extension && inferredFormat !== format) usage('--out extension must match --output-format (png, webp, jpg, jpeg), or have no extension.');
   const request: ImageRequest = {
-    model: values.model ?? 'gpt-image-2', prompt,
+    model: values.model ?? 'gpt-image-2.5-sunburst', prompt,
     size: values.size ?? '1024x1024',
-    quality: choice(values.quality ?? 'high', 'quality', ['low', 'medium', 'high', 'auto']),
+    quality: choice(values.quality ?? 'high', 'quality', ['low', 'medium', 'high', 'xhigh', 'max', 'auto']),
     background: choice(values.background ?? (format === 'jpeg' ? 'auto' : 'transparent'), 'background', ['transparent', 'opaque', 'auto']),
     output_format: format,
     n: integer(values.n ?? '1', 'n', 1, 10),
   };
   if (!/^(gpt-image-[\w.-]+|chatgpt-image-latest)$/.test(request.model)) usage('--model must be a GPT Image model (not DALL-E).');
+  if ((request.quality === 'xhigh' || request.quality === 'max') && !/^gpt-image-2\.5-(sunburst|flare)(-\d{4}-\d{2}-\d{2})?$/.test(request.model)) {
+    usage('--quality xhigh and max require a GPT Image 2.5 Sunburst or Flare model.');
+  }
   if (format === 'jpeg' && request.background === 'transparent') usage('JPEG cannot have a transparent background. Use PNG/WebP or --background opaque.');
   const warnings: string[] = [];
   if (request.size !== 'auto') {
@@ -561,9 +568,9 @@ async function submit(kind: Job['kind'], values: Values, positionals: string[]) 
     if (request.model.startsWith('gpt-image-2')) {
       const pixels = width * height;
       if (width % 16 || height % 16 || Math.max(width, height) > 3840 || Math.max(width, height) / Math.min(width, height) > 3 || pixels < 655360 || pixels > 8294400) {
-        usage('Invalid GPT Image 2 size: edges must be multiples of 16, at most 3840; aspect ratio at most 3:1; total pixels 655360..8294400.');
+        usage('Invalid GPT Image 2/2.5 size: edges must be multiples of 16, at most 3840; aspect ratio at most 3:1; total pixels 655360..8294400.');
       }
-      if (pixels > 3686400) warnings.push('GPT Image 2 output above 3686400 pixels is experimental.');
+      if (pixels > 3686400) warnings.push('GPT Image 2/2.5 output above 3686400 pixels is experimental.');
     } else if (!['1024x1024', '1536x1024', '1024x1536'].includes(request.size)) {
       usage('Older GPT Image models support 1024x1024, 1536x1024, 1024x1536, or auto.');
     }
@@ -594,7 +601,7 @@ async function submit(kind: Job['kind'], values: Values, positionals: string[]) 
       if (meta.format !== 'png' || !meta.hasAlpha || meta.width !== metadata[0].width || meta.height !== metadata[0].height) usage('Mask must be a PNG with an alpha channel and the same dimensions as the first image.');
     }
     if (values['input-fidelity'] !== undefined) {
-      if (request.model.startsWith('gpt-image-2')) usage('GPT Image 2 always uses high input fidelity. Omit --input-fidelity.');
+      if (request.model.startsWith('gpt-image-2')) usage('GPT Image 2/2.5 always uses high input fidelity. Omit --input-fidelity.');
       request.input_fidelity = choice(values['input-fidelity'], 'input-fidelity', ['low', 'high']);
     }
   }

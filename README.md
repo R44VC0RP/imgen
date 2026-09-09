@@ -22,7 +22,7 @@ imgen login
 
 ## Generate and edit
 
-Generate a standalone image with the direct Images API:
+Generate a standalone image with the direct Images API (defaults to `gpt-image-2.5-sunburst`; override with `--model`):
 
 ```sh
 imgen generate \
@@ -46,7 +46,7 @@ Inputs can include up to 16 PNG, JPEG, or WebP files. Use `--mask mask.png` for 
 
 ## Responses API image conversations
 
-`respond` uses `gpt-5.6` with the `gpt-image-2` tool by default:
+`respond` uses `gpt-5.6` with the `gpt-image-2.5-sunburst` tool by default:
 
 ```sh
 imgen respond \
@@ -155,7 +155,7 @@ Jobs survive terminal exit but not a reboot or forced worker termination. imgen 
 
 ```text
 --size WIDTHxHEIGHT|auto
---quality low|medium|high|auto
+--quality low|medium|high|xhigh|max|auto
 --background transparent|opaque|auto
 --output-format png|webp|jpeg
 --output-compression 0..100
